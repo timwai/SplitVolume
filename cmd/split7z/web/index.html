@@ -1,0 +1,149 @@
+<!doctype html><html lang="zh-CN"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SplitVolume · 分卷压缩助手</title>
+<link rel="icon" type="image/png" href="/assets/icon.png?key=__SPLIT_TOKEN__">
+<link rel="stylesheet" href="/assets/ui.css?key=__SPLIT_TOKEN__">
+<meta name="split-token" content="__SPLIT_TOKEN__"></head><body>
+<svg xmlns="http://www.w3.org/2000/svg" class="icons" aria-hidden="true">
+ <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8"/></symbol>
+ <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+ <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l-2 2a1.7 1.7 0 0 0-1.9-.3l-1.3.6a1.7 1.7 0 0 0-1 1.6H10.5a1.7 1.7 0 0 0-1-1.6l-1.3-.6a1.7 1.7 0 0 0-1.9.3l-2-2a1.7 1.7 0 0 0 .3-1.9L4 13.7a1.7 1.7 0 0 0-1.6-1V10a1.7 1.7 0 0 0 1.6-1l.6-1.3a1.7 1.7 0 0 0-.3-1.9l2-2a1.7 1.7 0 0 0 1.9.3l1.3-.6a1.7 1.7 0 0 0 1-1.6h3a1.7 1.7 0 0 0 1 1.6l1.3.6a1.7 1.7 0 0 0 1.9-.3l2 2a1.7 1.7 0 0 0-.3 1.9l.6 1.3a1.7 1.7 0 0 0 1.6 1v2.7a1.7 1.7 0 0 0-1.6 1z"/></symbol>
+ <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V13M9 20V7M14 20V10M19 20V3" stroke-width="3" stroke-linecap="round"/></symbol>
+ <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 10v7M14 10v7"/></symbol>
+ <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+ <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5zm-9 10 9 5 9-5m-18 5 9 5 9-5"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="m7 4 14 8-14 8z"/></symbol>
+ <symbol id="i-square" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+ <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></symbol>
+ <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9a2.9 2.9 0 0 1 5.6 1c0 2-2.8 2.1-2.8 4M12 17.5h.01"/></symbol>
+ <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7M8 12h13"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+ <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="3"/><path d="m6 9 4 3-4 3M12 16h5"/></symbol>
+ <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+</svg>
+
+<div class="app-shell">
+  <header class="app-header">
+    <div class="brand">
+      <img class="brand-image" src="/assets/icon.png?key=__SPLIT_TOKEN__" alt="">
+      <div class="brand-copy"><div class="brand-title">分卷压缩助手 <span>SplitVolume</span></div><p>轻松拆分大文件 · Linux 免 7z 解压</p></div>
+    </div>
+    <nav class="header-actions" aria-label="辅助工具">
+      <button class="head-button" id="showStats" title="查看分卷统计"><svg><use href="#i-chart"/></svg><span>统计</span></button>
+      <button class="head-button" id="showLogs" title="查看运行日志"><svg><use href="#i-file"/></svg><span>日志</span></button>
+      <span class="nav-divider"></span>
+      <button class="head-button" id="settingsHelp"><svg><use href="#i-help"/></svg><span>帮助</span></button>
+      <button class="head-button icon-only" id="about" title="关于"><svg><use href="#i-info"/></svg></button>
+    </nav>
+  </header>
+
+  <main class="home-page" id="homePage">
+    <div class="mobile-switch" aria-label="主界面切换"><button class="active" data-pane="files">文件列表</button><button data-pane="settings">压缩设置</button></div>
+    <div class="workspace">
+      <section class="panel files-panel" id="filesPanel" aria-label="待压缩项目">
+        <div class="panel-title-row"><div class="title-left"><svg><use href="#i-folder"/></svg><h2>待压缩项目</h2><span class="count-label" id="fileCount">已添加 <b>0</b> 项</span></div></div>
+        <div class="file-actions">
+          <button id="addFiles" class="btn primary-soft"><span class="plus">＋</span>添加文件</button>
+          <button id="addFolder" class="btn primary-soft"><span class="plus">＋</span>添加文件夹</button>
+          <span class="flex-space"></span>
+          <button id="removeSelected" class="btn flat" disabled>移除选中</button>
+          <button id="clearItems" class="btn flat icon-btn" title="清空列表"><svg><use href="#i-trash"/></svg></button>
+        </div>
+        <div class="files-table-wrap">
+          <table class="files-table" aria-label="压缩文件清单">
+            <thead><tr><th class="check-cell"><input id="selectAll" type="checkbox" aria-label="全选文件"></th><th>名称</th><th>路径</th><th>大小</th><th>类型</th></tr></thead>
+            <tbody id="filesBody"><tr class="empty-row"><td colspan="5"><div class="empty-illustration"><svg><use href="#i-folder"/></svg></div><strong>还没有文件</strong><span>添加文件、文件夹或直接拖放到此处</span></td></tr></tbody>
+          </table>
+        </div>
+        <div class="overview-panel">
+          <div class="overview-heading"><span><svg><use href="#i-chart"/></svg>分卷概览</span><button id="moreStats" class="text-action">查看图表 <span>›</span></button></div>
+          <div class="overview-metrics">
+            <div><small>原始大小</small><strong id="originalSize">0 B</strong></div>
+            <div><small>已生成分卷</small><strong id="volumeCount">0</strong></div>
+            <div><small>压缩后大小</small><strong id="compressedSize">0 B</strong></div>
+          </div>
+          <div class="mini-distribution" id="miniDistribution" title="各分卷占比将随压缩实时更新"><span class="empty-fill"></span></div>
+        </div>
+      </section>
+
+      <section class="panel options-panel" id="settingsPanel" aria-label="分卷设置">
+        <div class="panel-title-row"><div class="title-left"><svg><use href="#i-settings"/></svg><h2>压缩设置</h2></div><span class="format-tag">跨平台兼容</span></div>
+        <div class="form-stack">
+          <div class="input-group"><label for="outputDir">输出目录</label><div class="browse-row"><div class="field-with-icon"><svg><use href="#i-folder"/></svg><input id="outputDir" type="text" placeholder="选择保存位置" autocomplete="off"></div><button class="btn flat outlined" id="browseOutput">浏览</button></div></div>
+          <div class="input-group"><label for="archiveName">压缩包名</label><input id="archiveName" type="text" value="我的压缩包" placeholder="请输入压缩包名称" autocomplete="off"></div>
+          <div class="form-duo"><div class="input-group"><label for="volumeSize">每卷大小</label><div class="size-control"><input id="volumeSize" type="number" min="1" max="1048576" value="512"><span>MiB</span></div></div><div class="input-group"><label for="level">压缩等级</label><select id="level"><option value="0">0 - 仅存储</option><option value="1">1 - 最快</option><option value="3">3 - 较快</option><option value="5" selected>5 - 标准</option><option value="7">7 - 较高</option><option value="9">9 - 极限</option></select></div></div>
+          <div class="input-group"><label for="format">压缩格式</label><select id="format"><option value="targz">tar.gz 分卷 · Linux 推荐</option><option value="7z">7z 分卷 · 需要 7-Zip</option></select></div>
+          <label class="verify-row"><input id="verify" type="checkbox"><span>完成后校验分卷完整性</span></label>
+        </div>
+        <div class="settings-bottom">
+          <div class="action-row"><button id="start" class="btn btn-primary"><svg><use href="#i-play"/></svg>开始压缩</button><button id="cancel" class="btn btn-muted" disabled><svg><use href="#i-square"/></svg>取消</button></div>
+          <div class="settings-bottom-link"><span><svg><use href="#i-info"/></svg> 默认格式无需 Linux 安装 7z</span><button id="openOutput" class="text-action">打开输出目录 <span>↗</span></button></div>
+        </div>
+      </section>
+    </div>
+    <section class="panel task-panel" aria-label="当前任务">
+      <div class="task-top"><div class="task-status" id="progressStatus"><span class="status-dot waiting"><svg><use href="#i-clock"/></svg></span>等待压缩任务</div><span class="task-runtime" id="duration">耗时 00:00:00</span></div>
+      <div class="progress-line"><div class="track"><div class="fill" id="progressFill"></div></div><strong id="progressPercent">0%</strong></div>
+    </section>
+  </main>
+
+  <main id="helpPage" class="help-page" hidden>
+    <div class="page-heading"><button id="backHome" class="back-button"><svg><use href="#i-arrow-left"/></svg></button><div><h2>解压帮助</h2><p>按 Linux 环境选择方法，复制命令即可使用</p></div></div>
+    <div class="help-workspace">
+      <aside class="help-nav" aria-label="解压方案">
+        <button class="active" data-help="tar"><span class="help-nav-dot"></span><span><strong>Linux 直接解压</strong><small>cat + tar · 推荐</small></span></button>
+        <button data-help="static"><span class="help-nav-dot"></span><span><strong>极简 Linux 环境</strong><small>无需 tar / 7z</small></span></button>
+        <button data-help="merge"><span class="help-nav-dot"></span><span><strong>先合并再解压</strong><small>保留完整 tar.gz</small></span></button>
+        <button data-help="seven"><span class="help-nav-dot"></span><span><strong>传统 7z 分卷</strong><small>需要已安装 7z</small></span></button>
+      </aside>
+      <div class="help-content">
+        <section data-help-panel="tar">
+          <span class="eyebrow">推荐方案 · 无需 7-Zip</span><h3>Linux 直接解压 tar.gz 分卷</h3>
+          <p>把 <code>backup.tar.gz.001</code>、<code>.002</code> 等全部分卷放到同一目录。通过管道直接解压，不生成额外的大文件。</p>
+          <div class="code-shell"><div class="code-head"><span>Shell / BusyBox</span><button class="copy-code" data-copy-target="helpLinuxTar"><svg><use href="#i-copy"/></svg> 复制命令</button></div><pre id="helpLinuxTar">mkdir -p output
+cat backup.tar.gz.??? | tar -xz -C output</pre></div>
+          <div class="info-tip"><svg><use href="#i-info"/></svg><span>适用于三位编号的 .001～.999 分卷。不能单独解压其中一卷；注意按编号顺序合并。</span></div>
+        </section>
+        <section data-help-panel="static" hidden>
+          <span class="eyebrow">零依赖 · x86-64 / ARM64 / ARMv7</span><h3>没有 tar、gzip、7z 时</h3>
+          <p>将发布包中的 <code>extract.sh</code> 与对应架构的 <code>extract-linux-*</code> 解压器拷贝到 Linux 目录，与全部分卷放在一起。</p>
+          <div class="code-shell"><div class="code-head"><span>Shell · 自动选择 CPU 架构</span><button class="copy-code" data-copy-target="helpLinuxStatic"><svg><use href="#i-copy"/></svg> 复制命令</button></div><pre id="helpLinuxStatic">chmod +x ./extract-linux-*
+sh ./extract.sh backup.tar.gz.001 ./output</pre></div>
+          <div class="info-tip"><svg><use href="#i-info"/></svg><span>解压程序为静态编译版本，无需 Python、7-Zip 或 tar；可校验分卷连续性和 gzip CRC32。</span></div>
+        </section>
+        <section data-help-panel="merge" hidden>
+          <span class="eyebrow">备选方法 · 需要额外磁盘空间</span><h3>先合并成普通 tar.gz</h3>
+          <p>先将分卷顺序拼接成一个完整文件，再用 tar 解压；适用于需要保留归档副本的情况。</p>
+          <div class="code-shell"><div class="code-head"><span>Shell</span><button class="copy-code" data-copy-target="helpMerge"><svg><use href="#i-copy"/></svg> 复制命令</button></div><pre id="helpMerge">cat backup.tar.gz.??? > backup.tar.gz
+mkdir -p output
+tar -xzf backup.tar.gz -C output</pre></div>
+          <div class="info-tip"><svg><use href="#i-info"/></svg><span>确保磁盘剩余空间足够容纳完整的 tar.gz 文件；超过 .999 卷时建议使用独立解压器。</span></div>
+        </section>
+        <section data-help-panel="seven" hidden>
+          <span class="eyebrow">仅适用于 7z 分卷格式</span><h3>使用 7z 命令解压</h3>
+          <p>只有压缩时选择了 <code>7z 分卷</code> 才使用这条命令。默认 tar.gz 格式无需安装 7-Zip。</p>
+          <div class="code-shell"><div class="code-head"><span>Linux / Windows</span><button class="copy-code" data-copy-target="help7z"><svg><use href="#i-copy"/></svg> 复制命令</button></div><pre id="help7z">7z x backup.7z.001 -ooutput</pre></div>
+          <div class="info-tip"><svg><use href="#i-info"/></svg><span>请勿用 7z 命令直接解压默认的 .tar.gz.001；应使用上面的 Linux 方案。</span></div>
+        </section>
+        <div class="help-bottom"><strong>常见问题</strong><p>所有分卷必须完整、从 .001 连续编号并放在同一目录。文件名含空格时请正确引用路径。</p></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="statsOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="statsTitle">
+  <div class="dialog-card stats-dialog"><div class="dialog-head"><div><h2 id="statsTitle">分卷统计</h2><p>压缩过程中实时更新的真实分卷数据</p></div><button class="close-button" id="closeStats" aria-label="关闭统计"><svg><use href="#i-close"/></svg></button></div>
+    <div class="stat-summary"><div><small>原始大小</small><strong id="originalDetail">（等待添加文件）</strong></div><div><small>压缩后大小</small><strong id="compressedDetail">（尚未开始压缩）</strong></div><div><small>分卷设置</small><strong id="volumeStat">512 MiB</strong></div><div><small>压缩格式</small><strong id="formatStat">tar.gz</strong></div></div>
+    <div class="chart-title"><strong>分卷分布</strong><div class="chart-switch"><button data-chart="donut" class="selected">环形图</button><button data-chart="bar">柱状图</button></div></div>
+    <div class="chart-content"><div class="chart-wrap"><div class="donut-container" id="donut"><svg id="donutSvg" viewBox="0 0 232 232" aria-label="分卷大小环形图"></svg><div class="donut-center"><strong id="chartCount">0 卷</strong><span id="chartTotal">共 0 B</span></div></div><div class="bar-container" id="barChart" hidden></div></div><div class="chart-legend" id="chartLegend"><div class="no-chart">压缩后将在这里显示分卷数据</div></div></div>
+  </div>
+</div>
+<div class="overlay" id="logsOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="logsTitle">
+  <div class="dialog-card logs-dialog"><div class="dialog-head"><div><h2 id="logsTitle">运行日志</h2><p>任务记录与错误信息</p></div><div class="dialog-controls"><button class="btn flat outlined" id="clearLog"><svg><use href="#i-trash"/></svg>清空</button><button class="close-button" id="closeLogs" aria-label="关闭日志"><svg><use href="#i-close"/></svg></button></div></div><div id="logBody" class="log-body" aria-live="polite"></div></div>
+</div>
+<div id="toast" role="alert" hidden></div>
+<div class="modal-backdrop" id="modal" hidden><div class="modal"><div class="modal-title"><strong id="modalTitle"></strong><button id="closeModal" aria-label="关闭"><svg><use href="#i-close"/></svg></button></div><div id="modalContent"></div><button class="btn btn-primary" id="okModal">知道了</button></div></div>
+<script src="/assets/app.js?key=__SPLIT_TOKEN__"></script>
+</body></html>
