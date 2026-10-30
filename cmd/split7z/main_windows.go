@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -124,30 +125,29 @@ type apiRequest struct {
 	Level       int      `json:"level"`
 	Format      string   `json:"format"`
 	Verify      bool     `json:"verify"`
-	Session     string   `json:"session"`
 }
 type application struct {
 	sync.Mutex
-	entries       []entry
-	outputDir     string
-	archiveName   string
-	partsBase     string
-	inputSize     int64
-	running       bool
-	finished      bool
-	successful    bool
-	percent       int
-	status, phase string
-	startTime     time.Time
-	elapsed       time.Duration
-	lastResult    *archiver.Result
-	cancel        context.CancelFunc
-	logs          []string
-	lastError     string
-	lastSeen      time.Time
-	closing       bool
-	dragRoot      string
-	token         string
+	entries        []entry
+	outputDir      string
+	archiveName    string
+	partsBase      string
+	inputSize      int64
+	running        bool
+	finished       bool
+	successful     bool
+	percent        int
+	status, phase  string
+	startTime      time.Time
+	elapsed        time.Duration
+	lastResult     *archiver.Result
+	cancel         context.CancelFunc
+	logs           []string
+	lastError      string
+	lastSeen       time.Time
+	closing        bool
+	nativeDropOpen atomic.Bool
+	token          string
 }
 
 func newApp() *application {
@@ -191,6 +191,9 @@ func (a *application) add(paths []string) error {
 		}
 		sz, kind := sizeAndType(abs, info)
 		candidates = append(candidates, entry{Path: abs, Name: filepath.Base(abs), Directory: filepath.Dir(abs), Size: sz, Type: kind})
+	}
+	if len(candidates) == 0 && len(paths) > 0 {
+		return errors.New("文件或文件夹不存在，或者无法访问")
 	}
 	a.Lock()
 	defer a.Unlock()
@@ -378,10 +381,6 @@ func (a *application) handleAPI(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(a.state())
 		return
 	}
-	if r.URL.Path == "/api/drop-upload" && r.Method == "POST" {
-		a.handleDropUpload(w, r)
-		return
-	}
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", 405)
 		return
@@ -410,8 +409,8 @@ func (a *application) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if path != "" {
 			err = a.add([]string{path})
 		}
-	case "/api/drop-finalize":
-		err = a.finalizeDrop(req.Session, req.Paths)
+	case "/api/native-drop":
+		err = a.openNativeDrop()
 	case "/api/remove":
 		a.Lock()
 		if a.running {
@@ -488,109 +487,6 @@ func (a *application) handleAPI(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
-var safeSession = regexp.MustCompile(`^[A-Za-z0-9_-]{8,70}$`)
-
-// Validate relative paths used in browser drop uploads. Never trust the client
-// to supply an absolute filesystem path or a path outside the private cache.
-func safeDropPath(path string) (string, error) {
-	if path == "" || strings.ContainsAny(path, ":*?\"<>|\\") {
-		return "", errors.New("拖入路径包含非法字符")
-	}
-	cleaned := filepath.Clean(filepath.FromSlash(path))
-	if filepath.IsAbs(cleaned) || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
-		return "", errors.New("拖入路径不安全")
-	}
-	for _, segment := range strings.Split(cleaned, string(os.PathSeparator)) {
-		if strings.HasSuffix(segment, ".") || strings.HasSuffix(segment, " ") || segment == "" {
-			return "", errors.New("拖入路径存在非法名称")
-		}
-		stem := strings.ToUpper(strings.SplitN(segment, ".", 2)[0])
-		if stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" {
-			return "", errors.New("拖入路径包含 Windows 保留名称")
-		}
-		if len(stem) == 4 && (strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT")) && stem[3] >= '1' && stem[3] <= '9' {
-			return "", errors.New("拖入路径包含 Windows 保留名称")
-		}
-	}
-	return cleaned, nil
-}
-func (a *application) dropDir(session string) (string, error) {
-	if !safeSession.MatchString(session) {
-		return "", errors.New("无效的导入会话")
-	}
-	a.Lock()
-	defer a.Unlock()
-	if a.running {
-		return "", errors.New("压缩任务运行期间不能导入")
-	}
-	if a.dragRoot == "" {
-		d, e := os.MkdirTemp("", "SplitVolume-Dragged-*")
-		if e != nil {
-			return "", e
-		}
-		a.dragRoot = d
-	}
-	return filepath.Join(a.dragRoot, session), nil
-}
-func (a *application) handleDropUpload(w http.ResponseWriter, r *http.Request) {
-	session := r.URL.Query().Get("session")
-	relative, err := safeDropPath(r.URL.Query().Get("path"))
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-	dir, err := a.dropDir(session)
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-	dest := filepath.Join(dir, relative)
-	if r.URL.Query().Get("dir") == "1" {
-		if err := os.MkdirAll(dest, 0700); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-		return
-	}
-	if err = os.MkdirAll(filepath.Dir(dest), 0700); err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-	count, copyErr := io.Copy(f, io.LimitReader(r.Body, 1<<41))
-	closeErr := f.Close()
-	if copyErr != nil || closeErr != nil || (r.ContentLength >= 0 && count != r.ContentLength) {
-		_ = os.Remove(dest)
-		http.Error(w, "文件上传不完整", 400)
-		return
-	}
-	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-}
-func (a *application) finalizeDrop(session string, roots []string) error {
-	dir, err := a.dropDir(session)
-	if err != nil {
-		return err
-	}
-	paths := make([]string, 0, len(roots))
-	for _, relative := range roots {
-		clean, e := safeDropPath(relative)
-		if e != nil {
-			return e
-		}
-		full := filepath.Join(dir, clean)
-		if _, e = os.Stat(full); e != nil {
-			return fmt.Errorf("拖入文件尚未全部导入：%s", relative)
-		}
-		paths = append(paths, full)
-	}
-	return a.add(paths)
-}
-
 func edgePath() string {
 	if p, e := exec.LookPath("msedge.exe"); e == nil {
 		return p
@@ -627,14 +523,6 @@ func main() {
 		return
 	}
 	defer listener.Close()
-	defer func() {
-		a.Lock()
-		root := a.dragRoot
-		a.Unlock()
-		if root != "" {
-			_ = os.RemoveAll(root)
-		}
-	}()
 	webFiles, _ := fs.Sub(assets, "web")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", a.handleAPI)

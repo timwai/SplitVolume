@@ -107,7 +107,7 @@ function updateState(s,force){
   if(x.closest('.files-table'))return;
   x.disabled=!!s.running;
  });
- for(const id of ['addFiles','addFolder','clearItems','browseOutput','start'])$(id).disabled=!!s.running;
+ for(const id of ['addFiles','addFolder','nativeDrop','clearItems','browseOutput','start'])$(id).disabled=!!s.running;
  $('cancel').disabled=!s.running;
  $('openOutput').disabled=!s.outputDir;
  $('selectAll').disabled=!!s.running||!inputs.length;
@@ -169,49 +169,34 @@ for(const btn of document.querySelectorAll('[data-copy-target]'))btn.addEventLis
 routePage();
 $('about').addEventListener('click',()=>modal('关于 SplitVolume','SplitVolume · 分卷压缩助手\n\n紧凑版界面、分卷实时统计、运行日志与 Linux 解压帮助。\n内置 Go tar.gz 流式压缩引擎。界面使用隔离的浏览器应用配置，禁用扩展、离线工作。'));
 window.addEventListener('beforeunload',e=>{if(state?.running){e.preventDefault();e.returnValue='压缩任务正在运行，关闭窗口不会中断后台任务。'}});
-// Chromium file drops do not reveal absolute filesystem paths. Stream each
-// item to an isolated local cache instead; add-file dialogs avoid this copy.
-const entryToFile=e=>new Promise((resolve,reject)=>e.file(resolve,reject));
-const readEntries=reader=>new Promise((resolve,reject)=>reader.readEntries(resolve,reject));
-async function traverse(entry,prefix,files,dirs){
- const rel=prefix?`${prefix}/${entry.name}`:entry.name;
- if(entry.isFile){files.push({path:rel,file:await entryToFile(entry)});return}
- if(!entry.isDirectory)return;
- dirs.push(rel);
- const reader=entry.createReader();
- while(true){const children=await readEntries(reader);if(!children.length)break;for(const child of children)await traverse(child,rel,files,dirs)}
+// A browser's DataTransfer API does not expose source absolute paths.
+// Never upload or duplicate dragged file contents; use the native Win32 drop
+// target (WM_DROPFILES) to receive the original path from Windows Explorer.
+let dropRequestPending=false;
+async function launchNativeDrop(){
+ if(state?.running){toast('压缩期间无法添加文件');return}
+ if(dropRequestPending)return;
+ dropRequestPending=true;
+ try{await api('native-drop');toast('请将文件或文件夹拖入弹出的原生窗口；直接读取原始路径，不复制文件')}
+ catch(e){toast(e.message)}
+ finally{setTimeout(()=>dropRequestPending=false,1200)}
 }
-async function uploadDropped(entries,fallback){
- if(busy||state?.running){toast('当前任务运行中，无法导入文件');return}
- const files=[],dirs=[],roots=[];
- if(entries.length){for(const entry of entries){if(!entry)continue;roots.push(entry.name);await traverse(entry,'',files,dirs)}}
- else{for(const f of fallback){roots.push(f.name);files.push({path:f.name,file:f})}}
- if(!roots.length)return;
- const session=`session${Date.now()}${Math.random().toString(36).slice(2,11)}`;
- busy=true;
- try{
-  toast(`正在导入 ${files.length} 个文件，拖放导入会暂存副本；大文件建议使用“添加文件”按钮。`);
-  for(const dir of dirs){
-   const response=await fetch('/api/drop-upload?session='+encodeURIComponent(session)+'&path='+encodeURIComponent(dir)+'&dir=1',{method:'POST',headers:{'X-Split-Token':token},body:new Uint8Array(0)});
-   if(!response.ok)throw new Error(await response.text());
-  }
-  for(let i=0;i<files.length;i++){
-   const item=files[i];
-   const response=await fetch('/api/drop-upload?session='+encodeURIComponent(session)+'&path='+encodeURIComponent(item.path),{method:'POST',headers:{'X-Split-Token':token},body:item.file});
-   if(!response.ok)throw new Error(`导入失败：${item.path} · ${await response.text()}`);
-   if((i+1)%5===0||i===files.length-1)toast(`已导入 ${i+1}/${files.length} 个文件`);
-  }
-  await api('drop-finalize',{session,paths:roots});
-  await refresh(true);toast(`成功导入 ${roots.length} 个文件或文件夹`);
- }catch(err){toast(err.message)}finally{busy=false}
-}
-window.addEventListener('dragover',e=>{e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';document.body.classList.add('dragging')});
+$('nativeDrop').addEventListener('click',launchNativeDrop);
+window.addEventListener('dragenter',e=>{
+ if(!Array.from(e.dataTransfer?.types||[]).includes('Files'))return;
+ e.preventDefault();document.body.classList.add('dragging');
+ launchNativeDrop(); // Open a real shell drop target during the drag gesture.
+});
+window.addEventListener('dragover',e=>{
+ if(!Array.from(e.dataTransfer?.types||[]).includes('Files'))return;
+ e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='none';
+});
 window.addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('dragging')});
 window.addEventListener('drop',e=>{
  e.preventDefault();document.body.classList.remove('dragging');
- const entries=Array.from(e.dataTransfer?.items||[]).filter(i=>i.kind==='file').map(i=>i.webkitGetAsEntry?.()).filter(Boolean);
- const fallback=Array.from(e.dataTransfer?.files||[]);
- uploadDropped(entries,fallback).catch(err=>toast(err.message));
+ // Edge's page cannot provide a trustworthy source pathname. The native
+ // drop zone may already be open from dragenter; never stream bytes instead.
+ launchNativeDrop();
 });
 refresh(true);setInterval(()=>refresh(false),850);
 })();

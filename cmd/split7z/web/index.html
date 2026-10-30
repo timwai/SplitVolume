@@ -47,6 +47,7 @@
         <div class="file-actions">
           <button id="addFiles" class="btn primary-soft"><span class="plus">＋</span>添加文件</button>
           <button id="addFolder" class="btn primary-soft"><span class="plus">＋</span>添加文件夹</button>
+          <button id="nativeDrop" class="btn primary-soft" title="Windows 原生拖放：直接获取源文件路径，不产生临时副本">拖放导入</button>
           <span class="flex-space"></span>
           <button id="removeSelected" class="btn flat" disabled>移除选中</button>
           <button id="clearItems" class="btn flat icon-btn" title="清空列表"><svg><use href="#i-trash"/></svg></button>
@@ -54,7 +55,7 @@
         <div class="files-table-wrap">
           <table class="files-table" aria-label="压缩文件清单">
             <thead><tr><th class="check-cell"><input id="selectAll" type="checkbox" aria-label="全选文件"></th><th>名称</th><th>路径</th><th>大小</th><th>类型</th></tr></thead>
-            <tbody id="filesBody"><tr class="empty-row"><td colspan="5"><div class="empty-illustration"><svg><use href="#i-folder"/></svg></div><strong>还没有文件</strong><span>添加文件、文件夹或直接拖放到此处</span></td></tr></tbody>
+            <tbody id="filesBody"><tr class="empty-row"><td colspan="5"><div class="empty-illustration"><svg><use href="#i-folder"/></svg></div><strong>还没有文件</strong><span>点击“拖放导入”后将文件拖入原生窗口，不会复制源文件</span></td></tr></tbody>
           </table>
         </div>
         <div class="overview-panel">
