@@ -145,7 +145,8 @@ type application struct {
 	logs           []string
 	lastError      string
 	lastSeen       time.Time
-	closing        bool
+	clientSeen     bool
+	pageClosedAt   time.Time
 	nativeDropOpen atomic.Bool
 	token          string
 }
@@ -262,6 +263,11 @@ func snapshotVolumes(base string) ([]volume, int64) {
 func (a *application) state() snapshot {
 	a.Lock()
 	a.lastSeen = time.Now()
+	if !a.clientSeen {
+		log.Print("界面已成功连接本地压缩服务")
+	}
+	a.clientSeen = true
+	a.pageClosedAt = time.Time{} // reconnect/reload cancels a pending window-close signal
 	s := snapshot{Inputs: append([]entry{}, a.entries...), Running: a.running, Finished: a.finished, Successful: a.successful, Percent: a.percent, Status: a.status, Phase: a.phase, OriginalSize: a.inputSize, Logs: append([]string{}, a.logs...), LastError: a.lastError, OutputDir: a.outputDir, ArchiveName: a.archiveName, SevenZipAvailable: archiver.Find7Zip() != ""}
 	base := a.partsBase
 	if s.OriginalSize == 0 {
@@ -411,6 +417,12 @@ func (a *application) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/api/native-drop":
 		err = a.openNativeDrop()
+	case "/api/window-closed":
+		// A pagehide notification is only a hint: reloads can trigger it too.
+		// The main loop gives new page requests time to cancel this signal.
+		a.Lock()
+		a.pageClosedAt = time.Now()
+		a.Unlock()
 	case "/api/remove":
 		a.Lock()
 		if a.running {
@@ -508,7 +520,62 @@ func popError(msg string) {
 	body, _ := syscall.UTF16PtrFromString(msg)
 	messageBox.Call(0, uintptr(unsafe.Pointer(body)), uintptr(unsafe.Pointer(title)), 0x10)
 }
+
+// Diagnostic logs remain local and never contain API tokens or file contents.
+// This log is particularly useful because windowsgui executables have no console.
+// Check that the loopback listener can serve requests before opening Edge.
+// Explicitly disable proxy lookup; corporate HTTP proxies must not intercept
+// requests that are meant for the local process.
+func preflightLocalService(address string) error {
+	client := &http.Client{Timeout: 1200 * time.Millisecond, Transport: &http.Transport{Proxy: nil}}
+	defer client.CloseIdleConnections()
+	url := "http://" + address + "/healthz"
+	var lastErr error
+	for attempt := 0; attempt < 12; attempt++ {
+		response, err := client.Get(url)
+		if err == nil {
+			_ = response.Body.Close()
+			if response.StatusCode == http.StatusOK {
+				return nil
+			}
+			err = fmt.Errorf("unexpected status %s", response.Status)
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("本地服务健康检查失败：%w", lastErr)
+}
+
+func initDiagnosticLogging() *os.File {
+	root := os.Getenv("LOCALAPPDATA")
+	if root == "" {
+		root, _ = os.UserCacheDir()
+	}
+	if root == "" {
+		return nil
+	}
+	directory := filepath.Join(root, "SplitVolume", "logs")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return nil
+	}
+	path := filepath.Join(directory, "SplitVolume.log")
+	if st, err := os.Stat(path); err == nil && st.Size() > 3<<20 {
+		_ = os.Rename(path, path+".old")
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return nil
+	}
+	log.SetOutput(f)
+	return f
+}
+
 func main() {
+	logFile := initDiagnosticLogging()
+	if logFile != nil {
+		defer logFile.Close()
+	}
+	log.Printf("SplitVolume 启动：PID=%d", os.Getpid())
 	runtime.GOMAXPROCS(max(2, runtime.NumCPU()))
 	tokenBytes := make([]byte, 16)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -519,12 +586,22 @@ func main() {
 	a.token = hex.EncodeToString(tokenBytes)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		popError(err.Error())
+		log.Printf("本地监听失败：%v", err)
+		popError("本地压缩服务启动失败：" + err.Error())
 		return
 	}
+	log.Printf("本地服务监听：%s", listener.Addr())
 	defer listener.Close()
 	webFiles, _ := fs.Sub(assets, "web")
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = io.WriteString(w, "ok")
+	})
 	mux.HandleFunc("/api/", a.handleAPI)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
@@ -575,11 +652,18 @@ func main() {
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 6 * time.Second}
 	go func() {
 		if e := server.Serve(listener); e != nil && !errors.Is(e, http.ErrServerClosed) {
-			log.Printf("server: %v", e)
+			log.Printf("本地服务意外停止：%v", e)
 		}
 	}()
+	if err := preflightLocalService(listener.Addr().String()); err != nil {
+		log.Printf("启动检查失败：%v", err)
+		popError(err.Error() + "\n可查看 %LOCALAPPDATA%\\SplitVolume\\logs\\SplitVolume.log")
+		return
+	}
+	log.Print("本地服务健康检查成功")
 	edge := edgePath()
 	if edge == "" {
+		log.Print("未找到 Microsoft Edge")
 		popError("需要 Microsoft Edge 以显示原型级桌面界面。请安装 Microsoft Edge，然后重新打开。\n压缩和 Linux 解压组件不需要 Edge。")
 		return
 	}
@@ -609,27 +693,51 @@ func main() {
 		"--app="+url, windowSize, windowPosition,
 		"--user-data-dir="+profile,
 		"--no-first-run", "--no-default-browser-check", "--disable-extensions",
+		"--no-proxy-server", // Do not route loopback HTTP traffic through a corporate proxy.
 		"--disable-component-extensions-with-background-pages",
 		"--disable-sync", "--disable-background-mode", "--disable-notifications",
 		"--disable-session-crashed-bubble", "--hide-crash-restore-bubble",
 	)
 	if e := cmd.Start(); e != nil {
+		log.Printf("Edge 启动失败：%v", e)
 		popError("无法打开 Microsoft Edge：" + e.Error())
 		return
 	}
-	// The browser may reuse a running process or exit its launcher immediately;
-	// therefore track interface liveness rather than waiting on cmd.Wait().
-	go func() { _ = cmd.Wait() }()
+	// Never infer that a window was closed just because HTTP polling stopped.
+	// Edge may throttle JavaScript when minimized, the PC may sleep, or the
+	// browser may need substantially more than 28s to start. The old 28-second
+	// watchdog was shutting the compression service down behind a live window.
+	log.Printf("Edge 启动：PID=%d; 端口=%s", cmd.Process.Pid, listener.Addr())
+	edgeExit := make(chan time.Time, 1)
+	go func() {
+		if e := cmd.Wait(); e != nil {
+			log.Printf("Edge 进程退出：%v", e)
+		} else {
+			log.Print("Edge 进程已退出")
+		}
+		edgeExit <- time.Now()
+	}()
+	startedAt := time.Now()
+	var edgeExitedAt time.Time
 	tick := time.NewTicker(4 * time.Second)
 	defer tick.Stop()
 	for range tick.C {
+		select {
+		case t := <-edgeExit:
+			edgeExitedAt = t
+		default:
+		}
 		a.Lock()
-		inactive := time.Since(a.lastSeen) > 28*time.Second
-		running := a.running
+		shouldStop := shouldStopBackend(time.Now(), startedAt, a.lastSeen,
+			a.pageClosedAt, edgeExitedAt, a.clientSeen, a.running)
 		a.Unlock()
-		if inactive && !running {
+		if shouldStop {
+			log.Print("检测到界面关闭，正在停止本地服务")
 			break
 		}
 	}
-	_ = server.Shutdown(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = server.Shutdown(ctx)
+	log.Print("本地服务已停止")
 }

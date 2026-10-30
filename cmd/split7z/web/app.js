@@ -2,7 +2,7 @@
 'use strict';
 const token=document.querySelector('meta[name="split-token"]').content;
 const $=id=>document.getElementById(id);
-let state=null,selected=new Set(),chartMode='donut',busy=false,pollBusy=false,initial=true,lastLogs='',lastEntries='',showToastTimer=0;
+let state=null,selected=new Set(),chartMode='donut',busy=false,pollBusy=false,initial=true,lastLogs='',lastEntries='',showToastTimer=0,connectionFailures=0;
 const COLORS=['#318cf8','#5a9dfa','#9365f7','#ffab69','#42c9aa','#12acd6','#ef7aaf','#8396bb'];
 const fmt=n=>{n=Number(n)||0;if(n<1024)return `${n} B`;let i=0;for(const u of ['KiB','MiB','GiB','TiB']){i++;if(n<1024**(i+1))return `${(n/1024**i).toFixed(i>=3?2:1).replace(/\.0$/,'')} ${u}`;}return `${(n/1024**5).toFixed(2)} PiB`};
 const pad=n=>String(n).padStart(2,'0');
@@ -113,7 +113,22 @@ function updateState(s,force){
  $('selectAll').disabled=!!s.running||!inputs.length;
  syncChecks();
 }
-async function refresh(force=false){if(pollBusy)return;pollBusy=true;try{const s=await api('state',{},'GET');updateState(s,force)}catch(e){toast('无法连接压缩服务：'+e.message)}finally{pollBusy=false}}
+async function refresh(force=false){
+ if(pollBusy)return;
+ pollBusy=true;
+ try{
+  const s=await api('state',{},'GET');
+  const recovered=connectionFailures>0;
+  connectionFailures=0;
+  updateState(s,force);
+  if(recovered)toast('压缩服务已重新连接');
+ }catch(e){
+  connectionFailures++;
+  if(connectionFailures===1||connectionFailures%20===0){
+   toast('无法连接本地压缩服务：'+e.message+'。请确认 SplitVolume.exe 仍在运行；诊断日志位于 %LOCALAPPDATA%\\SplitVolume\\logs\\SplitVolume.log');
+  }
+ }finally{pollBusy=false}
+}
 $('addFiles').addEventListener('click',()=>action('add-files'));
 $('addFolder').addEventListener('click',()=>action('add-folder'));
 $('browseOutput').addEventListener('click',()=>action('browse-output'));
@@ -197,6 +212,11 @@ window.addEventListener('drop',e=>{
  // Edge's page cannot provide a trustworthy source pathname. The native
  // drop zone may already be open from dragenter; never stream bytes instead.
  launchNativeDrop();
+});
+// Do not stop the Go backend merely because this page stops polling: the OS
+// can suspend a window for minutes. Best-effort close hint; a reload cancels it.
+window.addEventListener('pagehide',()=>{
+ try{fetch('/api/window-closed',{method:'POST',headers:{'X-Split-Token':token,'Content-Type':'application/json'},body:'{}',keepalive:true})}catch(_){}
 });
 refresh(true);setInterval(()=>refresh(false),850);
 })();
